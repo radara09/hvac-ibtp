@@ -124,8 +124,8 @@ export async function generateQrPdf(siteName: string, units: ACRecord[]) {
   const logoMaxHeight = 8; // mm → hanya scale DOWN
   const gapAfterLogo = 1;
 
-  const qrSize = 40;
-  const gapAfterQr = 2;
+  const qrSize = 42;
+  const gapAfterQr = 4;
 
   const nameFontSize = 9;
   const locationFontSize = 8;
