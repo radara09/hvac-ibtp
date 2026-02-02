@@ -98,50 +98,60 @@ async function loadImageWithSize(
 }
 
 function normalizeBaseUrl(baseUrl: string) {
-  return baseUrl.replace(/\/+$/, ""); // remove trailing slash(es)
+  return baseUrl.replace(/\/+$/, "");
 }
 
-function buildAcDetailUrl(acId: string) {
-  const base = (import.meta as any).env?.VITE_PUBLIC_BASE_URL as string | undefined;
+function getPublicBaseUrl() {
+  const env = (import.meta as any).env ?? {};
+  const fromPublic = env.VITE_PUBLIC_BASE_URL as string | undefined;
+  const fromAuth = env.VITE_AUTH_BASE_URL as string | undefined;
+  const fromWindow =
+    typeof window !== "undefined" ? window.location.origin : undefined;
 
-  // Karena kamu bilang sudah set env Vite, kita enforce env wajib ada
+  return fromPublic || fromAuth || fromWindow || "";
+}
+
+function buildMaintenanceUrl(acId: string) {
+  const base = getPublicBaseUrl();
+
   if (!base) {
-    throw new Error(
-      "VITE_PUBLIC_BASE_URL is not set. Please set it in your Vite env (e.g. .env.production / .env.development)."
+    // fallback: jangan bikin QR kosong
+    console.warn(
+      "Base URL is empty. Set VITE_PUBLIC_BASE_URL / VITE_AUTH_BASE_URL. Fallback to ID only."
     );
+    return acId;
   }
 
-  const DETAIL_PATH_PREFIX = "/ac/"; // ubah kalau route kamu beda
-  return `${normalizeBaseUrl(base)}${DETAIL_PATH_PREFIX}${encodeURIComponent(acId)}`;
+  return `${normalizeBaseUrl(base)}/maintenance/${encodeURIComponent(acId)}`;
 }
 
 export async function generateQrPdf(siteName: string, units: ACRecord[]) {
-  const doc = new jsPDF(); // A4 portrait
+  const doc = new jsPDF(); // A4 portrait, unit mm
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
 
   // ===== Layout global =====
-  const margin = 8;
-  const headerY = 12;
-  const gridStartY = 18;
-  const marginBottom = 8;
+  const margin = 6;
+  const headerY = 10;
+  const gridStartY = 16;
+  const marginBottom = 6;
 
   const cols = 4;
   const cellWidth = (pageWidth - margin * 2) / cols;
 
-  // isi halaman dengan 4 baris (lebih besar & rapi)
+  // Isi halaman dengan 4 baris (QR lebih besar & rapi)
   const rowsPerPage = 4;
   const availableHeight = pageHeight - gridStartY - marginBottom;
   const cellHeight = availableHeight / rowsPerPage;
 
   // ===== Element sizes =====
-  const topPadding = 3;
+  const topPadding = 2;
 
-  // Logo: gunakan ukuran asli, hanya scale down
-  const logoMaxHeight = 8; // mm
-  const gapAfterLogo = 2;
+  // Logo: gunakan ukuran asli, hanya scale down by height
+  const logoMaxHeight = 6; // mm
+  const gapAfterLogo = 1;
 
-  const qrSize = 44; // mm
+  const qrSize = 42; // mm
   const gapAfterQr = 4;
 
   const nameFontSize = 9;
@@ -166,6 +176,7 @@ export async function generateQrPdf(siteName: string, units: ACRecord[]) {
   for (let i = 0; i < units.length; i++) {
     const unit = units[i];
 
+    // pagination (cek Y)
     const predictedY = gridStartY + row * cellHeight;
     if (predictedY + cellHeight > pageHeight - marginBottom) {
       doc.addPage();
@@ -177,35 +188,33 @@ export async function generateQrPdf(siteName: string, units: ACRecord[]) {
     const cx = margin + col * cellWidth;
     const cy = gridStartY + row * cellHeight;
 
-    // Border (optional)
+    // Border (optional, untuk cutting)
     doc.setDrawColor(200);
     doc.rect(cx, cy, cellWidth, cellHeight);
 
+    // =========================
+    // Layout dalam cell: logo -> QR -> name -> location
+    // =========================
     let currentY = cy + topPadding;
 
-    // ========== LOGO ==========
+    // --- Logo (center, no stretch) ---
     if (logo) {
       const aspect = logo.width / logo.height;
-
-      // scale down by height only (keep aspect)
       const logoHeight = logoMaxHeight;
       const logoWidth = logoHeight * aspect;
 
-      // center logo (kalau mau kiri: cx + 3)
-      const logoX = cx + (cellWidth - logoWidth) / 2;
+      const logoX = cx + (cellWidth - logoWidth) / 2; // center
       doc.addImage(logo.dataUrl, "PNG", logoX, currentY, logoWidth, logoHeight);
 
       currentY += logoHeight + gapAfterLogo;
     }
 
-    // ========== QR CODE ==========
+    // --- QR Code ---
     const qrX = cx + (cellWidth - qrSize) / 2;
     const qrY = currentY;
 
     try {
-      // ✅ Payload sekarang URL detail (redirect)
-      const qrPayload = buildAcDetailUrl(unit.id);
-
+      const qrPayload = buildMaintenanceUrl(unit.id); // ✅ redirect URL
       const qrDataUrl = await QRCode.toDataURL(qrPayload, {
         margin: 1,
         width: 300,
@@ -219,7 +228,7 @@ export async function generateQrPdf(siteName: string, units: ACRecord[]) {
 
     currentY += qrSize + gapAfterQr;
 
-    // ========== NAME ==========
+    // --- Nama unit ---
     doc.setFontSize(nameFontSize);
     doc.text(String(unit.assetCode ?? ""), cx + cellWidth / 2, currentY, {
       align: "center",
@@ -227,7 +236,7 @@ export async function generateQrPdf(siteName: string, units: ACRecord[]) {
 
     currentY += 6;
 
-    // ========== LOCATION (wrap) ==========
+    // --- Lokasi (wrap) ---
     doc.setFontSize(locationFontSize);
     const wrapped = doc
       .splitTextToSize(unit.location ?? "", cellWidth - 6)
