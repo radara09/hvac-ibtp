@@ -68,7 +68,7 @@ import jsPDF from "jspdf";
 import QRCode from "qrcode";
 import type { ACRecord } from "../types";
 
-// Load image + get original size (avoid stretch)
+// Load image + ambil ukuran asli
 async function loadImageWithSize(
   path: string
 ): Promise<{ dataUrl: string; width: number; height: number } | null> {
@@ -91,28 +91,14 @@ async function loadImageWithSize(
       img.src = dataUrl;
     });
 
-    return { dataUrl, width: img.naturalWidth, height: img.naturalHeight };
+    return {
+      dataUrl,
+      width: img.naturalWidth,
+      height: img.naturalHeight,
+    };
   } catch {
     return null;
   }
-}
-
-function normalizeBaseUrl(baseUrl: string) {
-  return baseUrl.replace(/\/+$/, ""); // remove trailing slash(es)
-}
-
-function buildAcDetailUrl(acId: string) {
-  const base = (import.meta as any).env?.VITE_PUBLIC_BASE_URL as string | undefined;
-
-  // Karena kamu bilang sudah set env Vite, kita enforce env wajib ada
-  if (!base) {
-    throw new Error(
-      "VITE_PUBLIC_BASE_URL is not set. Please set it in your Vite env (e.g. .env.production / .env.development)."
-    );
-  }
-
-  const DETAIL_PATH_PREFIX = "/ac/"; // ubah kalau route kamu beda
-  return `${normalizeBaseUrl(base)}${DETAIL_PATH_PREFIX}${encodeURIComponent(acId)}`;
 }
 
 export async function generateQrPdf(siteName: string, units: ACRecord[]) {
@@ -121,27 +107,24 @@ export async function generateQrPdf(siteName: string, units: ACRecord[]) {
   const pageHeight = doc.internal.pageSize.getHeight();
 
   // ===== Layout global =====
-  const margin = 8;
-  const headerY = 12;
-  const gridStartY = 18;
-  const marginBottom = 8;
+  const margin = 6;
+  const headerY = 10;
+  const gridStartY = 16;
+  const marginBottom = 6;
 
   const cols = 4;
   const cellWidth = (pageWidth - margin * 2) / cols;
 
-  // isi halaman dengan 4 baris (lebih besar & rapi)
   const rowsPerPage = 4;
   const availableHeight = pageHeight - gridStartY - marginBottom;
   const cellHeight = availableHeight / rowsPerPage;
 
   // ===== Element sizes =====
-  const topPadding = 3;
+  const topPadding = 2;
+  const logoMaxHeight = 6; // mm → hanya scale DOWN
+  const gapAfterLogo = 1;
 
-  // Logo: gunakan ukuran asli, hanya scale down
-  const logoMaxHeight = 8; // mm
-  const gapAfterLogo = 2;
-
-  const qrSize = 44; // mm
+  const qrSize = 42;
   const gapAfterQr = 4;
 
   const nameFontSize = 9;
@@ -181,32 +164,39 @@ export async function generateQrPdf(siteName: string, units: ACRecord[]) {
     doc.setDrawColor(200);
     doc.rect(cx, cy, cellWidth, cellHeight);
 
+    // =================
+    // LOGO (ASLI, SCALE DOWN)
+    // =================
     let currentY = cy + topPadding;
 
-    // ========== LOGO ==========
     if (logo) {
       const aspect = logo.width / logo.height;
 
-      // scale down by height only (keep aspect)
-      const logoHeight = logoMaxHeight;
+      const logoHeight = Math.min(logoMaxHeight, logo.height);
       const logoWidth = logoHeight * aspect;
 
-      // center logo (kalau mau kiri: cx + 3)
       const logoX = cx + (cellWidth - logoWidth) / 2;
-      doc.addImage(logo.dataUrl, "PNG", logoX, currentY, logoWidth, logoHeight);
+
+      doc.addImage(
+        logo.dataUrl,
+        "PNG",
+        logoX,
+        currentY,
+        logoWidth,
+        logoHeight
+      );
 
       currentY += logoHeight + gapAfterLogo;
     }
 
-    // ========== QR CODE ==========
+    // =================
+    // QR CODE
+    // =================
     const qrX = cx + (cellWidth - qrSize) / 2;
     const qrY = currentY;
 
     try {
-      // ✅ Payload sekarang URL detail (redirect)
-      const qrPayload = buildAcDetailUrl(unit.id);
-
-      const qrDataUrl = await QRCode.toDataURL(qrPayload, {
+      const qrDataUrl = await QRCode.toDataURL(unit.id, {
         margin: 1,
         width: 300,
         errorCorrectionLevel: "M",
@@ -219,24 +209,34 @@ export async function generateQrPdf(siteName: string, units: ACRecord[]) {
 
     currentY += qrSize + gapAfterQr;
 
-    // ========== NAME ==========
+    // =================
+    // NAMA UNIT
+    // =================
     doc.setFontSize(nameFontSize);
-    doc.text(String(unit.assetCode ?? ""), cx + cellWidth / 2, currentY, {
-      align: "center",
-    });
+    doc.text(
+      String(unit.assetCode ?? ""),
+      cx + cellWidth / 2,
+      currentY,
+      { align: "center" }
+    );
 
     currentY += 6;
 
-    // ========== LOCATION (wrap) ==========
+    // =================
+    // LOKASI (WRAP)
+    // =================
     doc.setFontSize(locationFontSize);
     const wrapped = doc
       .splitTextToSize(unit.location ?? "", cellWidth - 6)
       .slice(0, maxLocationLines);
 
     for (let li = 0; li < wrapped.length; li++) {
-      doc.text(String(wrapped[li]), cx + cellWidth / 2, currentY + li * lineHeight, {
-        align: "center",
-      });
+      doc.text(
+        String(wrapped[li]),
+        cx + cellWidth / 2,
+        currentY + li * lineHeight,
+        { align: "center" }
+      );
     }
 
     // advance grid
@@ -249,4 +249,3 @@ export async function generateQrPdf(siteName: string, units: ACRecord[]) {
 
   doc.save(`${siteName.replace(/[^a-z0-9]/gi, "_").toLowerCase()}_qrcodes.pdf`);
 }
-
