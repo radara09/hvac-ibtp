@@ -120,8 +120,8 @@ export async function generateQrPdf(siteName: string, units: ACRecord[]) {
   const cellHeight = availableHeight / rowsPerPage;
 
   // ===== Element sizes =====
-  const topPadding = 3;
-  const logoMaxHeight = 8; // mm → hanya scale DOWN
+  const topPadding = 2;
+  const logoMaxHeight = 6; // mm → hanya scale DOWN
   const gapAfterLogo = 1;
 
   const qrSize = 42;
