@@ -107,10 +107,10 @@ export async function generateQrPdf(siteName: string, units: ACRecord[]) {
   const pageHeight = doc.internal.pageSize.getHeight();
 
   // ===== Layout global =====
-  const margin = 8;
-  const headerY = 12;
-  const gridStartY = 18;
-  const marginBottom = 8;
+  const margin = 6;
+  const headerY = 10;
+  const gridStartY = 16;
+  const marginBottom = 6;
 
   const cols = 4;
   const cellWidth = (pageWidth - margin * 2) / cols;
@@ -122,10 +122,10 @@ export async function generateQrPdf(siteName: string, units: ACRecord[]) {
   // ===== Element sizes =====
   const topPadding = 3;
   const logoMaxHeight = 8; // mm → hanya scale DOWN
-  const gapAfterLogo = 2;
+  const gapAfterLogo = 1;
 
-  const qrSize = 44;
-  const gapAfterQr = 4;
+  const qrSize = 40;
+  const gapAfterQr = 2;
 
   const nameFontSize = 9;
   const locationFontSize = 8;
@@ -133,7 +133,7 @@ export async function generateQrPdf(siteName: string, units: ACRecord[]) {
   const maxLocationLines = 2;
 
   // Load logo sekali
-  const logo = await loadImageWithSize("/logo_only.png");
+  const logo = await loadImageWithSize("/logo.png");
 
   const drawHeader = () => {
     doc.setFontSize(16);
