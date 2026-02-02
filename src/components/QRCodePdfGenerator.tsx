@@ -92,10 +92,10 @@ export async function generateQrPdf(siteName: string, units: ACRecord[]) {
   const pageHeight = doc.internal.pageSize.getHeight();
 
   // === Margin & header ===
-  const margin = 8;
-  const headerY = 12;
-  const gridStartY = 18;
-  const marginBottom = 8;
+  const margin = 6;
+  const headerY = 10;
+  const gridStartY = 16;
+  const marginBottom = 6;
 
   const cols = 4;
   const cellWidth = (pageWidth - margin * 2) / cols;
@@ -124,7 +124,7 @@ export async function generateQrPdf(siteName: string, units: ACRecord[]) {
   const maxLocationLines = 2; // biar tidak kebawah (bisa 3 kalau kamu mau)
 
   // Load logo sekali
-  const logoDataUrl = await loadPublicImageAsDataUrl("/logo.png");
+  const logoDataUrl = await loadPublicImageAsDataUrl("/logo_only.png");
 
   const drawHeader = () => {
     doc.setFontSize(16);
