@@ -207,7 +207,10 @@ const PrintQrModal = ({
     const handlePrint = () => {
         if (!site) return;
         const finalUnits = selectedSheet
-            ? units.filter(u => u.sourceRowRef?.startsWith(`${selectedSheet}!`))
+            ? units.filter(u => (
+                u.sheetName === selectedSheet ||
+                u.sourceRowRef?.startsWith(`${selectedSheet}!`)
+            ))
             : units;
 
         generateQrPdf(site.name + (selectedSheet ? ` - ${selectedSheet}` : ""), finalUnits);
