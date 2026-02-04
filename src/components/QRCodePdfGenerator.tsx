@@ -111,7 +111,7 @@ function getPublicBaseUrl() {
   return fromPublic || fromAuth || fromWindow || "";
 }
 
-function buildMaintenanceUrl(acId: string) {
+function buildGuestMaintenanceUrl(acId: string, token?: string | null) {
   const base = getPublicBaseUrl();
 
   if (!base) {
@@ -122,8 +122,11 @@ function buildMaintenanceUrl(acId: string) {
     return acId;
   }
 
-  // return `${normalizeBaseUrl(base)}/maintenance/${encodeURIComponent(acId)}`;
-  return `${normalizeBaseUrl(base)}/guest/maintenance/${encodeURIComponent(acId)}`;
+  const path = `${normalizeBaseUrl(base)}/guest/maintenance/${encodeURIComponent(acId)}`;
+  if (!token) {
+    return path;
+  }
+  return `${path}?token=${encodeURIComponent(token)}`;
 }
 
 export async function generateQrPdf(siteName: string, units: ACRecord[]) {
@@ -157,6 +160,8 @@ export async function generateQrPdf(siteName: string, units: ACRecord[]) {
 
   const nameFontSize = 9;
   const locationFontSize = 8;
+  const nameLineHeight = 4;
+  const maxNameLines = 2;
   const lineHeight = 4;
   const maxLocationLines = 2;
 
@@ -215,7 +220,7 @@ export async function generateQrPdf(siteName: string, units: ACRecord[]) {
     const qrY = currentY;
 
     try {
-      const qrPayload = buildMaintenanceUrl(unit.id); // ✅ redirect URL
+      const qrPayload = buildGuestMaintenanceUrl(unit.id, unit.guestToken); // ✅ redirect URL (guest)
       const qrDataUrl = await QRCode.toDataURL(qrPayload, {
         margin: 1,
         width: 300,
@@ -231,11 +236,17 @@ export async function generateQrPdf(siteName: string, units: ACRecord[]) {
 
     // --- Nama unit ---
     doc.setFontSize(nameFontSize);
-    doc.text(String(unit.assetCode ?? ""), cx + cellWidth / 2, currentY, {
-      align: "center",
-    });
+    const wrappedName = doc
+      .splitTextToSize(String(unit.assetCode ?? ""), cellWidth - 6)
+      .slice(0, maxNameLines);
 
-    currentY += 6;
+    for (let ni = 0; ni < wrappedName.length; ni++) {
+      doc.text(String(wrappedName[ni]), cx + cellWidth / 2, currentY + ni * nameLineHeight, {
+        align: "center",
+      });
+    }
+
+    currentY += Math.max(1, wrappedName.length) * nameLineHeight + 2;
 
     // --- Lokasi (wrap) ---
     doc.setFontSize(locationFontSize);
@@ -259,4 +270,3 @@ export async function generateQrPdf(siteName: string, units: ACRecord[]) {
 
   doc.save(`${siteName.replace(/[^a-z0-9]/gi, "_").toLowerCase()}_qrcodes.pdf`);
 }
-
