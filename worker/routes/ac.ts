@@ -75,7 +75,7 @@ const handleGetRecords = requireSession(async (c: Context<AppBindings>) => {
         .from(acUnits)
         .where(filters ?? undefined)
         .orderBy(desc(acUnits.updatedAt))
-        .limit(15000);
+        .limit(200);
 
     return c.json({ records: rows.map(serializeAcRecord) });
 });
@@ -105,6 +105,34 @@ const handleGetRecordById = requireSession(async (c: Context<AppBindings>) => {
 
     return c.json({ record: serializeAcRecord(record), history: historyRows.map(row => serializeHistoryEntry(row.entry, row.userName)) });
 });
+
+const handleGetPublicRecordById = async (c: Context<AppBindings>) => {
+    const db = getDb(c.env);
+    const id = c.req.param("id");
+    const record = await db.query.acUnits.findFirst({ where: eq(acUnits.id, id) });
+    if (!record) {
+        return c.json({ error: "Not found" }, 404);
+    }
+
+    const historyRows = await db
+        .select({ entry: acUnitHistory, userName: users.name })
+        .from(acUnitHistory)
+        .leftJoin(users, eq(acUnitHistory.userId, users.id))
+        .where(eq(acUnitHistory.acUnitId, record.id))
+        .orderBy(desc(acUnitHistory.createdAt))
+        .limit(50);
+
+    const site = await db.query.sites.findFirst({
+        where: eq(sites.id, record.siteId),
+        columns: { name: true },
+    });
+
+    return c.json({
+        record: serializeAcRecord(record),
+        siteName: site?.name ?? null,
+        history: historyRows.map(row => serializeHistoryEntry(row.entry, row.userName)),
+    });
+};
 
 const handleCreateRecord = requireSession(async (c: Context<AppBindings>) => {
     const db = getDb(c.env);
@@ -291,6 +319,7 @@ const handleUpdateRecord = requireSession(async (c: Context<AppBindings>) => {
 export const registerAcRoutes = (app: Hono<AppBindings>) => {
     app.get("/api/ac", handleGetRecords);
     app.get("/api/ac/:id", handleGetRecordById);
+    app.get("/api/public/ac/:id", handleGetPublicRecordById);
     app.post("/api/ac", handleCreateRecord);
     app.patch("/api/ac/:id", handleUpdateRecord);
 };

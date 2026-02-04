@@ -11,6 +11,7 @@ import { MaintenanceSearchPage } from "./pages/MaintenanceSearchPage";
 import { AdminUsersPage } from "./pages/AdminUsersPage";
 import { AdminSitesPage } from "./pages/AdminSitesPage";
 import { CompleteProfilePage } from "./pages/CompleteProfilePage";
+import { GuestMaintenancePage } from "./pages/GuestMaintenancePage";
 import { useAcRecords } from "./hooks/useAcRecords";
 import { useAdminUsers } from "./hooks/useAdminUsers";
 import { useAuthForms } from "./hooks/useAuthForms";
@@ -438,6 +439,8 @@ function App() {
     return (
       <BrowserRouter>
         <Routes>
+          {/* <Route path="/maintenance/:id" element={<GuestMaintenanceRedirect />} /> */}
+          <Route path="/guest/maintenance/:id" element={<GuestMaintenancePage />} />
           <Route path="*" element={landing} />
         </Routes>
       </BrowserRouter>
@@ -532,6 +535,7 @@ function App() {
               />
             }
           />
+          <Route path="/guest/maintenance/:id" element={<GuestMaintenancePage />} />
           <Route
             path="/admin"
             element={

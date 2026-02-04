@@ -122,7 +122,8 @@ function buildMaintenanceUrl(acId: string) {
     return acId;
   }
 
-  return `${normalizeBaseUrl(base)}/maintenance/${encodeURIComponent(acId)}`;
+  // return `${normalizeBaseUrl(base)}/maintenance/${encodeURIComponent(acId)}`;
+  return `${normalizeBaseUrl(base)}/guest/maintenance/${encodeURIComponent(acId)}`;
 }
 
 export async function generateQrPdf(siteName: string, units: ACRecord[]) {
