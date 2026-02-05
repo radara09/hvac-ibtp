@@ -127,10 +127,10 @@ export function GuestMaintenancePage() {
                 Jadwal Berikut:{" "}
                 {record.nextScheduleAt ? new Date(record.nextScheduleAt).toLocaleString("id-ID") : "-"}
               </p>
-              <p>Tekanan Freon: {record.freonPressure ?? "-"}</p>
+              {/* <p>Tekanan Freon: {record.freonPressure ?? "-"}</p>
               <p>Suhu Keluar: {record.outletTemp ?? "-"}</p>
               <p>Ampere Kompresor: {record.compressorAmp ?? "-"}</p>
-              <p>Kondisi Filter: {record.filterCondition ?? "-"}</p>
+              <p>Kondisi Filter: {record.filterCondition ?? "-"}</p> */}
               <p>
                 Terakhir Diperbarui:{" "}
                 {record.updatedAt ? new Date(record.updatedAt).toLocaleString("id-ID") : "-"}
