@@ -19,8 +19,8 @@
 	"d1_databases": [
 		{
 			"binding": "DB",
-			"database_name": "hvac_db_test",
-			"database_id": "f27a3e61-86e1-4860-bed6-c54fa23d3496",
+			"database_name": "db-hvac-ibtp",
+			"database_id": "90ad375b-12a4-4586-b5a8-331e2808f959",
 			"migrations_dir": "drizzle"
 		}
 	],
