@@ -547,7 +547,8 @@ const syncSingleSheet = async (
     // Collect validation errors for debugging
     const validationErrors: RowValidationError[] = [];
     const parsedRows = rows
-        .map(row => {
+        // .map(row => {
+        .map((row, rowIndex) => {
             const draft = mapRow(header, row, sheetName);
             if (!draft) return null;
 
@@ -581,9 +582,11 @@ const syncSingleSheet = async (
                     draft.parameters = JSON.stringify(params);
                 }
             }
-            return draft;
+            // return draft;
+            return { ...draft, __rowIndex: rowIndex };
         })
-        .filter((value): value is Partial<AcRow> & { sourceRowRef?: string } => Boolean(value));
+        // .filter((value): value is Partial<AcRow> & { sourceRowRef?: string } => Boolean(value));
+        .filter((value): value is (Partial<AcRow> & { sourceRowRef?: string; __rowIndex?: number }) => Boolean(value));
 
     if (!parsedRows.length) {
         // Build detailed error message
@@ -673,7 +676,19 @@ const syncSingleSheet = async (
                 updates.nextScheduleAt = parsed.nextScheduleAt;
             }
             if (Object.keys(updates).length > 0) {
-                await db.update(acUnits).set(updates).where(eq(acUnits.id, current.id));
+                // await db.update(acUnits).set(updates).where(eq(acUnits.id, current.id));
+                try {
+                    await db.update(acUnits).set(updates).where(eq(acUnits.id, current.id));
+                } catch (error) {
+                    console.error("[SheetsSync] update failed", {
+                        siteId: site.id,
+                        sheet: sheetName,
+                        rowIndex: parsed.__rowIndex,
+                        assetCode: parsed.assetCode,
+                        sourceRowRef: parsed.sourceRowRef,
+                    }, error);
+                    throw error;
+                }
                 updated += 1;
             }
             continue;
@@ -682,26 +697,37 @@ const syncSingleSheet = async (
             skipped += 1;
             continue;
         }
-        await db.insert(acUnits).values({
-            id: crypto.randomUUID(),
-            siteId: site.id,
-            assetCode: parsed.assetCode ?? keyRaw,
-            location: parsed.location ?? "-",
-            brand: parsed.brand ?? "-",
-            lastCondition: parsed.lastCondition ?? "Bagus",
-            lastServiceAt: parsed.lastServiceAt ?? new Date(),
-            technician: parsed.technician ?? "Sheets Sync",
-            nextScheduleAt: parsed.nextScheduleAt ?? monthAdd(parsed.lastServiceAt ?? new Date(), 3),
-            freonPressure: parsed.freonPressure ?? null,
-            outletTemp: parsed.outletTemp ?? null,
-            compressorAmp: parsed.compressorAmp ?? null,
-            filterCondition: parsed.filterCondition ?? null,
-            photoUrl: parsed.photoUrl ?? null,
-            parameters: parsed.parameters ?? null,
-            sheetName: sheetName,
-            ownerId: options.initiatorUserId,
-            sourceRowRef: parsed.sourceRowRef ?? parsed.assetCode ?? keyRaw,
-        });
+        try {
+            await db.insert(acUnits).values({
+                id: crypto.randomUUID(),
+                siteId: site.id,
+                assetCode: parsed.assetCode ?? keyRaw,
+                location: parsed.location ?? "-",
+                brand: parsed.brand ?? "-",
+                lastCondition: parsed.lastCondition ?? "Bagus",
+                lastServiceAt: parsed.lastServiceAt ?? new Date(),
+                technician: parsed.technician ?? "Sheets Sync",
+                nextScheduleAt: parsed.nextScheduleAt ?? monthAdd(parsed.lastServiceAt ?? new Date(), 3),
+                freonPressure: parsed.freonPressure ?? null,
+                outletTemp: parsed.outletTemp ?? null,
+                compressorAmp: parsed.compressorAmp ?? null,
+                filterCondition: parsed.filterCondition ?? null,
+                photoUrl: parsed.photoUrl ?? null,
+                parameters: parsed.parameters ?? null,
+                sheetName: sheetName,
+                ownerId: options.initiatorUserId,
+                sourceRowRef: parsed.sourceRowRef ?? parsed.assetCode ?? keyRaw,
+            });
+        } catch (error) {
+            console.error("[SheetsSync] insert failed", {
+                siteId: site.id,
+                sheet: sheetName,
+                rowIndex: parsed.__rowIndex,
+                assetCode: parsed.assetCode,
+                sourceRowRef: parsed.sourceRowRef,
+            }, error);
+            throw error;
+        }
         inserted += 1;
     }
 
