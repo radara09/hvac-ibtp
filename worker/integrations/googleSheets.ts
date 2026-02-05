@@ -71,6 +71,32 @@ const LOCATION_ALIASES = ["location", "lokasi", "posisi", "ruang", "lantai", "ge
 const BRAND_ALIASES = ["brand", "merk", "merek", "model", "type", "tipe"];
 
 const normalizeHeader = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
+const normalizeKey = (value?: string | null) => (typeof value === "string" ? value.trim() : "");
+
+const isInvalidSourceRowRef = (value: string, location?: string | null) => {
+    if (!value) return true;
+    if (value.toUpperCase() === "#ERROR!") return true;
+    const locationKey = normalizeKey(location).toLowerCase();
+    if (locationKey && value.toLowerCase() === locationKey) return true;
+    return false;
+};
+
+const finalizeIdentifiers = (draft: Partial<AcRow> & { sourceRowRef?: string }) => {
+    const rawAssetCode = normalizeKey(draft.assetCode);
+    const assetCode = rawAssetCode.toUpperCase() === "#ERROR!" ? "" : rawAssetCode;
+    const sourceRowRef = normalizeKey(draft.sourceRowRef);
+    const validSource = isInvalidSourceRowRef(sourceRowRef, draft.location) ? "" : sourceRowRef;
+    const fallback = assetCode || validSource;
+
+    if (fallback) {
+        draft.assetCode = assetCode || fallback;
+        draft.sourceRowRef = validSource || fallback;
+        return;
+    }
+
+    if (draft.assetCode) draft.assetCode = assetCode || undefined;
+    if (draft.sourceRowRef) draft.sourceRowRef = validSource || undefined;
+};
 
 const HEADER_RULES: Record<string, (value: string, target: Partial<AcRow> & { sourceRowRef?: string }) => void> = {
     id_ac: (value, target) => {
@@ -190,6 +216,12 @@ const HEADER_RULES: Record<string, (value: string, target: Partial<AcRow> & { so
     },
     foto_url: (value, target) => {
         target.photoUrl = value.trim();
+    },
+    signature_url: (value, target) => {
+        target.signatureUrl = value.trim();
+    },
+    tanda_tangan_url: (value, target) => {
+        target.signatureUrl = value.trim();
     },
 };
 
@@ -447,9 +479,7 @@ const mapRow = (header: string[], row: string[], sheetName: string): (Partial<Ac
             handler(raw, draft);
         }
     });
-    if (!draft.assetCode && draft.sourceRowRef) {
-        draft.assetCode = draft.sourceRowRef;
-    }
+    finalizeIdentifiers(draft);
     
     // Default values for optional fields
     if (!draft.location) {
@@ -572,6 +602,8 @@ const syncSingleSheet = async (
                             } else if (BRAND_ALIASES.includes(key)) {
                                 const existing = draft.brand && draft.brand !== "-" ? draft.brand : "";
                                 draft.brand = existing ? `${existing}, ${val}` : val;
+                            } else if (key === "signature_url" || key === "tanda_tangan_url") {
+                                draft.signatureUrl = val;
                             } else {
                                 params[field.key] = val;
                             }
@@ -582,6 +614,7 @@ const syncSingleSheet = async (
                     draft.parameters = JSON.stringify(params);
                 }
             }
+            finalizeIdentifiers(draft);
             // return draft;
             return { ...draft, __rowIndex: rowIndex };
         })
@@ -617,8 +650,10 @@ const syncSingleSheet = async (
     const existing = await db.select().from(acUnits).where(eq(acUnits.siteId, site.id));
     const existingMap = new Map<string, (typeof existing)[number]>();
     existing.forEach(entry => {
-        const key = (entry.sourceRowRef ?? entry.assetCode ?? entry.id).toLowerCase();
-        existingMap.set(key, entry);
+        const key = normalizeKey(entry.assetCode).toLowerCase();
+        if (key) {
+            existingMap.set(key, entry);
+        }
     });
 
     let inserted = 0;
@@ -629,98 +664,86 @@ const syncSingleSheet = async (
         if (!parsed) {
             continue;
         }
-        const keyRaw = parsed.sourceRowRef ?? parsed.assetCode;
-        if (!keyRaw) {
+        const assetCode = normalizeKey(parsed.assetCode);
+        const sourceRowRefRaw = normalizeKey(parsed.sourceRowRef);
+        const sourceRowRef = isInvalidSourceRowRef(sourceRowRefRaw, parsed.location) ? assetCode : (sourceRowRefRaw || assetCode);
+        if (!assetCode) {
+            console.log(`[SheetsSync] row action=skip siteId=${site.id} sheet=${sheetName} rowIndex=${parsed.__rowIndex} assetCode=${assetCode || "-"} sourceRowRef=${sourceRowRef || "-"}`);
             skipped += 1;
             continue;
         }
-        const key = keyRaw.toLowerCase();
+        const key = assetCode.toLowerCase();
         const current = existingMap.get(key);
+        const now = new Date();
         if (current) {
-            const updates: Record<string, unknown> = {};
-            const fields: Array<keyof AcRow> = [
-                "assetCode",
-                "location",
-                "brand",
-                "lastCondition",
-                "technician",
-                "freonPressure",
-                "outletTemp",
-                "compressorAmp",
-                "filterCondition",
-                "photoUrl",
-            ];
-            for (const field of fields) {
-                const nextValue = parsed[field];
-                if (typeof nextValue !== "undefined" && nextValue !== (current as Record<string, unknown>)[field]) {
-                    updates[field] = nextValue;
-                }
+            const updates: Record<string, unknown> = {
+                location: parsed.location ?? "-",
+                brand: parsed.brand ?? "-",
+                lastCondition: parsed.lastCondition ?? "Bagus",
+                lastServiceAt: parsed.lastServiceAt ?? now,
+                technician: parsed.technician ?? "Sheets Sync",
+                nextScheduleAt: parsed.nextScheduleAt ?? monthAdd(parsed.lastServiceAt ?? now, 3),
+                freonPressure: parsed.freonPressure ?? null,
+                outletTemp: parsed.outletTemp ?? null,
+                compressorAmp: parsed.compressorAmp ?? null,
+                filterCondition: parsed.filterCondition ?? null,
+                sheetName: sheetName,
+                photoUrl: parsed.photoUrl ?? null,
+                signatureUrl: parsed.signatureUrl ?? null,
+                sourceRowRef: sourceRowRef,
+                lastSyncedAt: now,
+                updatedAt: now,
+            };
+            if (typeof parsed.parameters !== "undefined") {
+                updates.parameters = parsed.parameters ?? null;
             }
-            // Update parameters if present
-            if (parsed.parameters) {
-                const normalize = (val: unknown) => {
-                    if (typeof val !== "string") return "";
-                    try {
-                        const obj = JSON.parse(val);
-                        return JSON.stringify(obj, Object.keys(obj).sort());
-                    } catch {
-                        return val;
-                    }
-                };
-                if (normalize(parsed.parameters) !== normalize(current.parameters)) {
-                    updates.parameters = parsed.parameters;
-                }
+            try {
+                await db.update(acUnits).set(updates).where(eq(acUnits.id, current.id));
+            } catch (error) {
+                console.error("[SheetsSync] update failed", {
+                    siteId: site.id,
+                    sheet: sheetName,
+                    rowIndex: parsed.__rowIndex,
+                    assetCode: parsed.assetCode,
+                    sourceRowRef: parsed.sourceRowRef,
+                }, error);
+                throw error;
             }
-
-            if (parsed.lastServiceAt) {
-                updates.lastServiceAt = parsed.lastServiceAt;
-            }
-            if (parsed.nextScheduleAt) {
-                updates.nextScheduleAt = parsed.nextScheduleAt;
-            }
-            if (Object.keys(updates).length > 0) {
-                // await db.update(acUnits).set(updates).where(eq(acUnits.id, current.id));
-                try {
-                    await db.update(acUnits).set(updates).where(eq(acUnits.id, current.id));
-                } catch (error) {
-                    console.error("[SheetsSync] update failed", {
-                        siteId: site.id,
-                        sheet: sheetName,
-                        rowIndex: parsed.__rowIndex,
-                        assetCode: parsed.assetCode,
-                        sourceRowRef: parsed.sourceRowRef,
-                    }, error);
-                    throw error;
-                }
-                updated += 1;
-            }
+            console.log(`[SheetsSync] row action=update siteId=${site.id} sheet=${sheetName} rowIndex=${parsed.__rowIndex} assetCode=${assetCode} sourceRowRef=${sourceRowRef}`);
+            updated += 1;
             continue;
         }
         if (!options.initiatorUserId) {
+            console.log(`[SheetsSync] row action=skip siteId=${site.id} sheet=${sheetName} rowIndex=${parsed.__rowIndex} assetCode=${assetCode} sourceRowRef=${sourceRowRef}`);
             skipped += 1;
             continue;
         }
         try {
+            const id = crypto.randomUUID();
             await db.insert(acUnits).values({
-                id: crypto.randomUUID(),
+                id,
                 siteId: site.id,
-                assetCode: parsed.assetCode ?? keyRaw,
+                assetCode: assetCode,
                 location: parsed.location ?? "-",
                 brand: parsed.brand ?? "-",
                 lastCondition: parsed.lastCondition ?? "Bagus",
-                lastServiceAt: parsed.lastServiceAt ?? new Date(),
+                lastServiceAt: parsed.lastServiceAt ?? now,
                 technician: parsed.technician ?? "Sheets Sync",
-                nextScheduleAt: parsed.nextScheduleAt ?? monthAdd(parsed.lastServiceAt ?? new Date(), 3),
+                nextScheduleAt: parsed.nextScheduleAt ?? monthAdd(parsed.lastServiceAt ?? now, 3),
                 freonPressure: parsed.freonPressure ?? null,
                 outletTemp: parsed.outletTemp ?? null,
                 compressorAmp: parsed.compressorAmp ?? null,
                 filterCondition: parsed.filterCondition ?? null,
                 photoUrl: parsed.photoUrl ?? null,
+                signatureUrl: parsed.signatureUrl ?? null,
                 parameters: parsed.parameters ?? null,
                 sheetName: sheetName,
                 ownerId: options.initiatorUserId,
-                sourceRowRef: parsed.sourceRowRef ?? parsed.assetCode ?? keyRaw,
+                sourceRowRef: sourceRowRef,
+                lastSyncedAt: now,
+                updatedAt: now,
             });
+            existingMap.set(key, { id, assetCode } as (typeof existing)[number]);
         } catch (error) {
             console.error("[SheetsSync] insert failed", {
                 siteId: site.id,
@@ -731,6 +754,7 @@ const syncSingleSheet = async (
             }, error);
             throw error;
         }
+        console.log(`[SheetsSync] row action=insert siteId=${site.id} sheet=${sheetName} rowIndex=${parsed.__rowIndex} assetCode=${assetCode} sourceRowRef=${sourceRowRef}`);
         inserted += 1;
     }
 
