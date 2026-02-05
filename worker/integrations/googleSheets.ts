@@ -586,7 +586,7 @@ const syncSingleSheet = async (
             return { ...draft, __rowIndex: rowIndex };
         })
         // .filter((value): value is Partial<AcRow> & { sourceRowRef?: string } => Boolean(value));
-        .filter((value): value is (Partial<AcRow> & { sourceRowRef?: string; __rowIndex?: number }) => Boolean(value));
+        .filter((value): value is (Partial<AcRow> & { sourceRowRef?: string; __rowIndex: number }) => Boolean(value));
 
     if (!parsedRows.length) {
         // Build detailed error message
@@ -626,6 +626,9 @@ const syncSingleSheet = async (
     let skipped = 0;
 
     for (const parsed of parsedRows) {
+        if (!parsed) {
+            continue;
+        }
         const keyRaw = parsed.sourceRowRef ?? parsed.assetCode;
         if (!keyRaw) {
             skipped += 1;
