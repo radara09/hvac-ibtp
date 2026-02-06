@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { acUnits, sites, siteSheets, acTypes } from "../db";
 import { getDb } from "../utils";
 import type { AcRow, AppBindings, SiteRow } from "../types";
@@ -645,16 +645,6 @@ const syncSingleSheet = async (
     }
 
     const db = getDb(env);
-    // Optimization: Filter by siteId is good, but maybe we should also try to filter by something else if possible?
-    // For now keep it as is.
-    const existing = await db.select().from(acUnits).where(eq(acUnits.siteId, site.id));
-    const existingMap = new Map<string, (typeof existing)[number]>();
-    existing.forEach(entry => {
-        const key = normalizeKey(entry.assetCode).toLowerCase();
-        if (key) {
-            existingMap.set(key, entry);
-        }
-    });
 
     let inserted = 0;
     let updated = 0;
@@ -672,8 +662,12 @@ const syncSingleSheet = async (
             skipped += 1;
             continue;
         }
-        const key = assetCode.toLowerCase();
-        const current = existingMap.get(key);
+        const current = await db
+            .select()
+            .from(acUnits)
+            .where(and(eq(acUnits.siteId, site.id), eq(acUnits.assetCode, assetCode)))
+            .limit(1)
+            .then(rows => rows[0]);
         const now = new Date();
         if (current) {
             const updates: Record<string, unknown> = {
@@ -743,7 +737,6 @@ const syncSingleSheet = async (
                 lastSyncedAt: now,
                 updatedAt: now,
             });
-            existingMap.set(key, { id, assetCode } as (typeof existing)[number]);
         } catch (error) {
             console.error("[SheetsSync] insert failed", {
                 siteId: site.id,

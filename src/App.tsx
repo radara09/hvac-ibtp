@@ -125,9 +125,12 @@ function App() {
 
   const stats = useMemo(() => {
     const bermasalah = acRecords.filter((record) => {
-      const condition = record.lastCondition?.toLowerCase() ?? "";
+      const condition = record.lastCondition?.toLowerCase().trim() ?? "";
       return (
-        condition === "buruk" || condition === "cukup" || condition === "rusak"
+        condition === "buruk" ||
+        condition === "cukup" ||
+        condition === "rusak" ||
+        condition === "bermasalah"
       );
     }).length;
     const overdue = acRecords.filter((record) => {

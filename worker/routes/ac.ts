@@ -1,5 +1,5 @@
 import type { Context, Hono } from "hono";
-import { and, desc, eq, inArray, like, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, like, or } from "drizzle-orm";
 import { acUnitHistory, acUnits, sites, users, siteSheets, acTypes } from "../db";
 import type { AppBindings, CreateAcRequest, UpdateAcRequest, AcHistoryChangeSet } from "../types";
 import { getDb, parseTimestamp, serializeAcRecord, serializeHistoryEntry } from "../utils";
@@ -70,14 +70,18 @@ const handleGetRecords = requireSession(async (c: Context<AppBindings>) => {
         filters = filters ? and(filters, searchFilter) : searchFilter;
     }
 
+    const baseFilter = isNull(sites.deletedAt); // Always exclude soft-deleted sites
+    const combinedFilter = filters ? and(baseFilter, filters) : baseFilter;
+
     const rows = await db
-        .select()
+        .select({ unit: acUnits })
         .from(acUnits)
-        .where(filters ?? undefined)
+        .innerJoin(sites, eq(acUnits.siteId, sites.id))
+        .where(combinedFilter)
         .orderBy(desc(acUnits.updatedAt))
         .limit(15000);
 
-    return c.json({ records: rows.map(serializeAcRecord) });
+    return c.json({ records: rows.map(row => serializeAcRecord(row.unit)) });
 });
 
 const handleGetRecordById = requireSession(async (c: Context<AppBindings>) => {
@@ -87,7 +91,13 @@ const handleGetRecordById = requireSession(async (c: Context<AppBindings>) => {
         return c.json({ error: "Unauthorized" }, 401);
     }
     const id = c.req.param("id");
-    const record = await db.query.acUnits.findFirst({ where: eq(acUnits.id, id) });
+    const row = await db
+        .select({ unit: acUnits })
+        .from(acUnits)
+        .innerJoin(sites, eq(acUnits.siteId, sites.id))
+        .where(and(eq(acUnits.id, id), isNull(sites.deletedAt)))
+        .limit(1);
+    const record = row[0]?.unit;
     if (!record) {
         return c.json({ error: "Not found" }, 404);
     }
@@ -109,7 +119,13 @@ const handleGetRecordById = requireSession(async (c: Context<AppBindings>) => {
 const handleGetPublicRecordById = async (c: Context<AppBindings>) => {
     const db = getDb(c.env);
     const id = c.req.param("id");
-    const record = await db.query.acUnits.findFirst({ where: eq(acUnits.id, id) });
+    const row = await db
+        .select({ unit: acUnits, siteName: sites.name })
+        .from(acUnits)
+        .innerJoin(sites, eq(acUnits.siteId, sites.id))
+        .where(and(eq(acUnits.id, id), isNull(sites.deletedAt)))
+        .limit(1);
+    const record = row[0]?.unit;
     if (!record) {
         return c.json({ error: "Not found" }, 404);
     }
@@ -122,14 +138,9 @@ const handleGetPublicRecordById = async (c: Context<AppBindings>) => {
         .orderBy(desc(acUnitHistory.createdAt))
         .limit(50);
 
-    const site = await db.query.sites.findFirst({
-        where: eq(sites.id, record.siteId),
-        columns: { name: true },
-    });
-
     return c.json({
         record: serializeAcRecord(record),
-        siteName: site?.name ?? null,
+        siteName: row[0]?.siteName ?? null,
         history: historyRows.map(row => serializeHistoryEntry(row.entry, row.userName)),
     });
 };
