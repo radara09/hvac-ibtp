@@ -207,6 +207,10 @@ export function MaintenancePage({
   // Multi-Photo State
   const [uploadedPhotos, setUploadedPhotos] = useState<{ url: string; label: string }[]>([]);
   const [photoLabel, setPhotoLabel] = useState("Kondisi");
+  const photosToShow = useMemo(() => {
+    const latestWithPhotos = history.find(entry => entry.photos && entry.photos.length > 0);
+    return latestWithPhotos?.photos ?? null;
+  }, [history]);
 
   const normalizeCellToken = (token: string) => token.replace(/\$/g, "").toUpperCase();
 
@@ -525,12 +529,32 @@ export function MaintenancePage({
                 data={`${typeof window !== 'undefined' ? window.location.origin : ''}/guest/maintenance/${selectedRecord.id}`}
                 title={selectedRecord.assetCode}
               />
-              {selectedRecord.photoUrl && (
-                <img
-                  src={selectedRecord.photoUrl}
-                  alt={selectedRecord.assetCode}
-                  className="w-full rounded-2xl border border-black/10 object-cover"
-                />
+              {photosToShow && photosToShow.length > 0 ? (
+                <div className="grid grid-cols-2 gap-2">
+                  {photosToShow.map((photo, index) => (
+                    <div key={`${photo.url}-${index}`} className="relative overflow-hidden rounded-2xl border border-black/10">
+                      <img
+                        src={photo.url}
+                        alt={photo.label || selectedRecord.assetCode}
+                        className="h-40 w-full object-cover"
+                        loading="lazy"
+                      />
+                      {photo.label && (
+                        <div className="absolute inset-x-0 bottom-0 bg-black/60 px-2 py-1 text-[10px] uppercase tracking-wide text-white">
+                          {photo.label}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                selectedRecord.photoUrl && (
+                  <img
+                    src={selectedRecord.photoUrl}
+                    alt={selectedRecord.assetCode}
+                    className="w-full rounded-2xl border border-black/10 object-cover"
+                  />
+                )
               )}
               {selectedRecord.signatureUrl && (
                 <div className="rounded-2xl border border-black/10 bg-white p-4">
